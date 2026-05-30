@@ -1,24 +1,19 @@
 --[[
     ONYX HUB - Premium Roblox GUI Library v2
-    Tema: Branco & Azul Neon
-    - Tamanho maior, responsivo (PC / Tablet / Mobile)
-    - Sidebar com toggles (liga/desliga)
-    - Sistema de minimizar / maximizar (botão flutuante)
-    - Apenas X fecha o menu (não destrói, só esconde)
-    - Sistema de notificações (canto inferior direito)
-    - Pills do topo corrigidas (label e valor não se sobrepõem)
-    - ESP POMBA integrado com Rainbow
-    - Anti-kick (mesma lógica)
-    - Auto Farm Gari (caminhando até o lixo + detecção de obstáculos)
-    - Nitro Automático para veículos (tecla N ou botão mobile)
---------------------------------------------------------------------]]
+    Compatível com Xeno, Delta, Synapse, Krnl, Scriptware, etc.
+    - Tema: Branco & Azul Neon
+    - ESP condicional (desativa se Drawing não estiver disponível)
+    - Auto Farm Gari com desvio de obstáculos
+    - Nitro Automático (tecla N ou botão mobile)
+    - Aimbot, Hitbox, Noclip, Anti-Sit, Anti-AFK, Spinbot, Speed/Fly Car
+--]]
 
-local Players          = game:GetService("Players")
+local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local TweenService     = game:GetService("TweenService")
-local RunService       = game:GetService("RunService")
-local CoreGui          = game:GetService("CoreGui")
-local Debris           = game:GetService("Debris")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Debris = game:GetService("Debris")
 
 local LP = Players.LocalPlayer
 
@@ -37,7 +32,6 @@ local THEME = {
     Danger     = Color3.fromRGB(255, 95, 95),
 }
 
----------------------------------------------------------------- THEMES (presets)
 local THEMES = {
     ["CLS Pink"] = {
         Background=Color3.fromRGB(18,10,18), Surface=Color3.fromRGB(28,16,28),
@@ -92,6 +86,12 @@ local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.MouseEn
 local function ms(base) return IS_MOBILE and (base + 4) or base end
 local function mh(base) return IS_MOBILE and math.floor(base * 1.35) or base end
 
+-- Verificar suporte a Drawing (necessário para ESP e FOV)
+local hasDrawing = pcall(function() return Drawing end) and Drawing ~= nil
+if not hasDrawing then
+    warn("[Onyx] Drawing não suportado. ESP e círculo de FOV serão desativados.")
+end
+
 ---------------------------------------------------------------- HELPERS
 local function new(class, props, children)
     local i = Instance.new(class)
@@ -115,11 +115,18 @@ local function padding(p, v)
 end
 local function tween(o, p, i) TweenService:Create(o, i or TWEEN, p):Play() end
 
+local function SafeDrawing(t)
+    if not hasDrawing then return nil end
+    local ok, o = pcall(function() return Drawing.new(t) end)
+    return ok and o or nil
+end
+
 ---------------------------------------------------------------- ONYX
 local Onyx = {}
 Onyx.__index = Onyx
 
 function Onyx:Init()
+    -- Destruir GUI antiga
     local old = (CoreGui:FindFirstChild("OnyxHub")) or (LP:FindFirstChild("PlayerGui") and LP.PlayerGui:FindFirstChild("OnyxHub"))
     if old then old:Destroy() end
 
@@ -127,8 +134,11 @@ function Onyx:Init()
         Name = "OnyxHub", IgnoreGuiInset = true,
         ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     })
-    pcall(function() gui.Parent = CoreGui end)
-    if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
+    -- Tentar CoreGui, se falhar usar PlayerGui (compatível com Xeno/Delta)
+    local success, err = pcall(function() gui.Parent = CoreGui end)
+    if not success then
+        gui.Parent = LP:WaitForChild("PlayerGui")
+    end
     self.Gui = gui
     if self.NotificationsEnabled == nil then self.NotificationsEnabled = true end
 
@@ -1044,7 +1054,6 @@ local AimbotConfig = {
 local ESPColor = THEME.Accent
 local FOVColor = THEME.Accent
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-local hasDrawing = pcall(function() return Drawing end) and Drawing ~= nil
 
 local ESP_Colors = {
     ESPName = Color3.fromRGB(255, 255, 255),
@@ -1076,22 +1085,7 @@ local aimbotActive = false
 
 local function GetChar() return LP.Character end
 local function GetHRP() local c=GetChar(); return c and c:FindFirstChild("HumanoidRootPart") end
-local function SafeDrawing(t) if not hasDrawing then return nil end local ok,o=pcall(function() return Drawing.new(t) end); return ok and o or nil end
 local function IsWhitelisted(plr) if not Toggles.UseWhitelist then return false end return Whitelist[plr.Name]==true end
-local function FireProx(prompt)
-    if not prompt or not prompt:IsA("ProximityPrompt") then return end
-    if type(fireproximityprompt)=="function" then pcall(fireproximityprompt, prompt); return end
-    pcall(function()
-        prompt:InputHoldBegin(Enum.UserInputType.MouseButton1); task.wait(0.05)
-        prompt:InputHoldEnd(Enum.UserInputType.MouseInput)
-    end)
-end
-
-local function teleportTo(x, y, z)
-    local char = LP.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if hrp then hrp.CFrame = CFrame.new(x, y, z) end
-end
 
 -- ============================ NOCLIP / ANTI-SIT / ANTI-AFK / SPINBOT
 local function ToggleNoclip(s)
@@ -1337,8 +1331,8 @@ UserInputService.InputBegan:Connect(function(input) if Toggles.AimbotHotkey and 
 UserInputService.InputEnded:Connect(function(input) if IsHotkeyMatch(input) then hotkeyAimbotActive=false end end)
 
 local function CreateFOVCircle()
-    if fovCircle then pcall(function() fovCircle:Remove() end); fovCircle=nil end
     if not hasDrawing then return end
+    if fovCircle then pcall(function() fovCircle:Remove() end); fovCircle=nil end
     local c=SafeDrawing("Circle"); if not c then return end
     pcall(function() c.Visible=false; c.Radius=AimbotConfig.FOVRadius; c.Color=FOVColor; c.Thickness=1; c.Filled=false; c.Transparency=1 end)
     fovCircle=c
@@ -1354,7 +1348,7 @@ local function CreateFOVCircle()
     end)
 end
 
--- ============================ ESP (POMBA + INVENTORY + TRACER + RAINBOW)
+-- ============================ ESP (com verificação de Drawing)
 local function CheckAntiKick()
     if tick() - lastKickTime < kickCooldown then return false end
     lastKickTime = tick()
@@ -1384,6 +1378,7 @@ task.spawn(function()
 end)
 
 local function RemoveESP(plr)
+    if not hasDrawing then return end
     local d=espObjects[plr]; if not d then return end
     if d.Box then for _,l in ipairs(d.Box) do pcall(function() l:Remove() end) end end
     if d.Line then pcall(function() d.Line:Remove() end) end
@@ -1396,23 +1391,23 @@ local function RemoveESP(plr)
 end
 
 local function CreateESP(plr)
-    if not Toggles.ESP then return end
+    if not hasDrawing or not Toggles.ESP then return end
     if espObjects[plr] then RemoveESP(plr) end
     local ch=plr.Character; if not ch then return end
     local d={}; local col = (IsWhitelisted(plr) and Color3.fromRGB(80,220,80)) or ESPColor
-    if Toggles.ESPBox and hasDrawing then
+    if Toggles.ESPBox then
         local ls={}; for i=1,4 do local l=SafeDrawing("Line"); if l then pcall(function() l.Visible=true; l.Color=col; l.Thickness=1; l.Transparency=1 end) end; table.insert(ls,l) end
         d.Box=ls
     end
-    if Toggles.ESPLine and hasDrawing then local l=SafeDrawing("Line"); if l then pcall(function() l.Visible=true; l.Color=col; l.Thickness=1; l.Transparency=1 end) end; d.Line=l end
-    if Toggles.ESPStuds and hasDrawing then local t=SafeDrawing("Text"); if t then pcall(function() t.Visible=true; t.Color=col; t.Size=12; t.Font=Drawing.Fonts.UI; t.Outline=true; t.Center=true; t.Transparency=1 end) end; d.Studs=t end
-    if Toggles.ESPName and hasDrawing then local t=SafeDrawing("Text"); if t then pcall(function() t.Visible=true; t.Color=col; t.Size=12; t.Font=Drawing.Fonts.UI; t.Outline=true; t.Center=true; t.Transparency=1 end) end; d.Name=t end
+    if Toggles.ESPLine then local l=SafeDrawing("Line"); if l then pcall(function() l.Visible=true; l.Color=col; l.Thickness=1; l.Transparency=1 end) end; d.Line=l end
+    if Toggles.ESPStuds then local t=SafeDrawing("Text"); if t then pcall(function() t.Visible=true; t.Color=col; t.Size=12; t.Font=Drawing.Fonts.UI; t.Outline=true; t.Center=true; t.Transparency=1 end) end; d.Studs=t end
+    if Toggles.ESPName then local t=SafeDrawing("Text"); if t then pcall(function() t.Visible=true; t.Color=col; t.Size=12; t.Font=Drawing.Fonts.UI; t.Outline=true; t.Center=true; t.Transparency=1 end) end; d.Name=t end
     if Toggles.ESPChams then
         local ok,h=pcall(function()
             local x=Instance.new("Highlight"); x.FillColor=col; x.FillTransparency=0.7; x.OutlineColor=col; x.OutlineTransparency=0.1; x.Parent=ch; return x
         end); if ok then d.Chams=h end
     end
-    if Toggles.ESPSkeleton and hasDrawing then
+    if Toggles.ESPSkeleton then
         local ls={}; local bones={
             {"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
             {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
@@ -1426,7 +1421,7 @@ local function CreateESP(plr)
         end
         d.Skeleton=ls
     end
-    if Toggles.ESPTracer and hasDrawing then
+    if Toggles.ESPTracer then
         local l=SafeDrawing("Line"); if l then pcall(function() l.Visible=true; l.Color=col; l.Thickness=1; l.Transparency=1 end) end
         d.Tracer=l
     end
@@ -1434,6 +1429,13 @@ local function CreateESP(plr)
 end
 
 local function UpdateAllESP()
+    if not hasDrawing then
+        if Toggles.ESP then
+            Toggles.ESP = false
+            notify("ESP", "Drawing não suportado neste executor. ESP desativado.", 3)
+        end
+        return
+    end
     for p in pairs(espObjects) do RemoveESP(p) end
     if not Toggles.ESP then return end
     for _,p in ipairs(Players:GetPlayers()) do if p~=LP then CreateESP(p) end end
@@ -1515,7 +1517,6 @@ local function getModelBasePart(model)
     return nil
 end
 
--- Função melhorada para andar até uma posição, desviando de obstáculos
 local function walkToPosition(targetPos)
     local char = LP.Character
     if not char then return false end
@@ -1982,27 +1983,36 @@ end
 local visual = hub:AddTab("Visual", nil)
 do
     local c = visual:AddCard("ESP")
-    c:AddToggle("ESP Master", false, function(s) Toggles.ESP=s; UpdateAllESP() end)
-    c:AddToggle("ESP Box", false, function(s) Toggles.ESPBox=s; UpdateAllESP() end)
-    c:AddToggle("ESP Line", false, function(s) Toggles.ESPLine=s; UpdateAllESP() end)
-    c:AddToggle("ESP Skeleton", false, function(s) Toggles.ESPSkeleton=s; UpdateAllESP() end)
-    c:AddToggle("ESP Chams", false, function(s) Toggles.ESPChams=s; UpdateAllESP() end)
-    c:AddToggle("ESP Name", false, function(s) Toggles.ESPName=s; UpdateAllESP() end)
-    c:AddToggle("ESP Studs (dist)", false, function(s) Toggles.ESPStuds=s; UpdateAllESP() end)
+    -- Aviso se Drawing não suportado
+    if not hasDrawing then
+        CardAddLabel(c, "⚠️ ESP desativado: executor sem suporte a Drawing.", THEME.Danger)
+    end
+    c:AddToggle("ESP Master", false, function(s)
+        Toggles.ESP = s
+        if hasDrawing then UpdateAllESP() else notify("ESP", "Drawing não suportado, ESP indisponível.", 3) end
+    end)
+    c:AddToggle("ESP Box", false, function(s) Toggles.ESPBox=s; if hasDrawing then UpdateAllESP() end end)
+    c:AddToggle("ESP Line", false, function(s) Toggles.ESPLine=s; if hasDrawing then UpdateAllESP() end end)
+    c:AddToggle("ESP Skeleton", false, function(s) Toggles.ESPSkeleton=s; if hasDrawing then UpdateAllESP() end end)
+    c:AddToggle("ESP Chams", false, function(s) Toggles.ESPChams=s; if hasDrawing then UpdateAllESP() end end)
+    c:AddToggle("ESP Name", false, function(s) Toggles.ESPName=s; if hasDrawing then UpdateAllESP() end end)
+    c:AddToggle("ESP Studs (dist)", false, function(s) Toggles.ESPStuds=s; if hasDrawing then UpdateAllESP() end end)
     c:AddToggle("ESP Rainbow", false, function(s) Toggles.ESPRainbow=s; ESPRainbowActive=s end)
-    c:AddToggle("ESP Inventory", false, function(s) Toggles.ESPInv=s; UpdateAllESP() end)
-    c:AddToggle("ESP Tracer (chão)", false, function(s) Toggles.ESPTracer=s; UpdateAllESP() end)
+    c:AddToggle("ESP Inventory", false, function(s) Toggles.ESPInv=s; if hasDrawing then UpdateAllESP() end end)
+    c:AddToggle("ESP Tracer (chão)", false, function(s) Toggles.ESPTracer=s; if hasDrawing then UpdateAllESP() end end)
 
     local cc = visual:AddCard("Cores ESP")
-    CardAddColorPicker(cc, hub, "Cor do ESP (base)", ESPColor, function(col) ESPColor=col; UpdateAllESP() end)
-    CardAddColorPicker(cc, hub, "Cor do FOV", FOVColor, function(col) FOVColor=col; if fovCircle then pcall(function() fovCircle.Color=col end) end end)
+    CardAddColorPicker(cc, hub, "Cor do ESP (base)", ESPColor, function(col) ESPColor=col; if hasDrawing then UpdateAllESP() end end)
+    if hasDrawing then
+        CardAddColorPicker(cc, hub, "Cor do FOV", FOVColor, function(col) FOVColor=col; if fovCircle then pcall(function() fovCircle.Color=col end) end end)
+    end
 end
 
 -- AMIGOS
 local friends = hub:AddTab("Amigos", nil)
 do
     local c = friends:AddCard("Whitelist")
-    c:AddToggle("Usar Whitelist", false, function(s) Toggles.UseWhitelist=s; UpdateAllESP() end)
+    c:AddToggle("Usar Whitelist", false, function(s) Toggles.UseWhitelist=s; if hasDrawing then UpdateAllESP() end end)
     CardAddLabel(c, "Clique em 'Amigo' para adicionar à whitelist (não será mirado).")
     local list = friends:AddCard("Jogadores no servidor")
     playerListSF = CardAddPlayerList(list)
@@ -2149,7 +2159,7 @@ do
         if data.carSensitivity then carSensitivity = data.carSensitivity end
         if data.nitroForce then nitroForce = data.nitroForce end
         if data.TELEPORT_DELAY_SECONDS then TELEPORT_DELAY_SECONDS = data.TELEPORT_DELAY_SECONDS end
-        pcall(UpdateAllESP)
+        if hasDrawing then pcall(UpdateAllESP) end
     end
 
     local sc = cfg:AddCard("Salvar / Carregar Config")
@@ -2207,146 +2217,148 @@ do
     end)
 end
 
--- ============================ LOOP DO ESP (modificado)
+-- ============================ LOOP DO ESP (com verificação)
 RunService.RenderStepped:Connect(function()
-    if Toggles.ESPRainbow or ESPRainbowActive then
+    if hasDrawing and (Toggles.ESPRainbow or ESPRainbowActive) then
         local hue = (tick() % 5) / 5
         ESPColor = Color3.fromHSV(hue, 1, 1)
     end
 
-    for plr, d in pairs(espObjects) do
-        local ch = plr.Character
-        if not ch then RemoveESP(plr); continue end
-        local hrp = ch:FindFirstChild("HumanoidRootPart")
-        local head = ch:FindFirstChild("Head")
-        if not hrp or not head then
-            if d.Box then for _,l in ipairs(d.Box) do pcall(function() l.Visible=false end) end end
-            if d.Line then pcall(function() d.Line.Visible=false end) end
-            if d.Studs then pcall(function() d.Studs.Visible=false end) end
-            if d.Name then pcall(function() d.Name.Visible=false end) end
-            if d.Tracer then pcall(function() d.Tracer.Visible=false end) end
-            continue
-        end
+    if hasDrawing then
+        for plr, d in pairs(espObjects) do
+            local ch = plr.Character
+            if not ch then RemoveESP(plr); continue end
+            local hrp = ch:FindFirstChild("HumanoidRootPart")
+            local head = ch:FindFirstChild("Head")
+            if not hrp or not head then
+                if d.Box then for _,l in ipairs(d.Box) do pcall(function() l.Visible=false end) end end
+                if d.Line then pcall(function() d.Line.Visible=false end) end
+                if d.Studs then pcall(function() d.Studs.Visible=false end) end
+                if d.Name then pcall(function() d.Name.Visible=false end) end
+                if d.Tracer then pcall(function() d.Tracer.Visible=false end) end
+                continue
+            end
 
-        local hp, hOn = Camera:WorldToViewportPoint(hrp.Position)
-        local hd, hdOn = Camera:WorldToViewportPoint(head.Position)
-        if not hOn then
-            if d.Box then for _,l in ipairs(d.Box) do pcall(function() l.Visible=false end) end end
-            if d.Line then pcall(function() d.Line.Visible=false end) end
-            if d.Studs then pcall(function() d.Studs.Visible=false end) end
-            if d.Name then pcall(function() d.Name.Visible=false end) end
-            if d.Tracer then pcall(function() d.Tracer.Visible=false end) end
-            continue
-        end
+            local hp, hOn = Camera:WorldToViewportPoint(hrp.Position)
+            local hd, hdOn = Camera:WorldToViewportPoint(head.Position)
+            if not hOn then
+                if d.Box then for _,l in ipairs(d.Box) do pcall(function() l.Visible=false end) end end
+                if d.Line then pcall(function() d.Line.Visible=false end) end
+                if d.Studs then pcall(function() d.Studs.Visible=false end) end
+                if d.Name then pcall(function() d.Name.Visible=false end) end
+                if d.Tracer then pcall(function() d.Tracer.Visible=false end) end
+                continue
+            end
 
-        local mh = GetHRP()
-        local dist = mh and math.floor((mh.Position - hrp.Position).Magnitude) or 0
-        local col = (IsWhitelisted(plr) and Color3.fromRGB(80,220,80)) or ESPColor
+            local mh = GetHRP()
+            local dist = mh and math.floor((mh.Position - hrp.Position).Magnitude) or 0
+            local col = (IsWhitelisted(plr) and Color3.fromRGB(80,220,80)) or ESPColor
 
-        if d.Box then for _,l in ipairs(d.Box) do if l then l.Color = col end end end
-        if d.Line then d.Line.Color = col end
-        if d.Studs then d.Studs.Color = col end
-        if d.Name then d.Name.Color = col end
-        if d.Chams then pcall(function() d.Chams.FillColor = col; d.Chams.OutlineColor = col end) end
-        if d.Tracer then d.Tracer.Color = col end
+            if d.Box then for _,l in ipairs(d.Box) do if l then l.Color = col end end end
+            if d.Line then d.Line.Color = col end
+            if d.Studs then d.Studs.Color = col end
+            if d.Name then d.Name.Color = col end
+            if d.Chams then pcall(function() d.Chams.FillColor = col; d.Chams.OutlineColor = col end) end
+            if d.Tracer then d.Tracer.Color = col end
 
-        if d.Box and Toggles.ESPBox then
-            local h = math.abs(hp.Y - hd.Y) * 2
-            local w = h * 0.55
-            local cx = hp.X
-            local top = hd.Y - h * 0.1
-            local bot = top + h
-            local L = cx - w/2
-            local R = cx + w/2
-            local corners = {
-                {Vector2.new(L,top), Vector2.new(R,top)},
-                {Vector2.new(R,top), Vector2.new(R,bot)},
-                {Vector2.new(R,bot), Vector2.new(L,bot)},
-                {Vector2.new(L,bot), Vector2.new(L,top)}
-            }
-            for i, l in ipairs(d.Box) do
-                if l then
-                    l.Visible = true
-                    l.From = corners[i][1]
-                    l.To = corners[i][2]
+            if d.Box and Toggles.ESPBox then
+                local h = math.abs(hp.Y - hd.Y) * 2
+                local w = h * 0.55
+                local cx = hp.X
+                local top = hd.Y - h * 0.1
+                local bot = top + h
+                local L = cx - w/2
+                local R = cx + w/2
+                local corners = {
+                    {Vector2.new(L,top), Vector2.new(R,top)},
+                    {Vector2.new(R,top), Vector2.new(R,bot)},
+                    {Vector2.new(R,bot), Vector2.new(L,bot)},
+                    {Vector2.new(L,bot), Vector2.new(L,top)}
+                }
+                for i, l in ipairs(d.Box) do
+                    if l then
+                        l.Visible = true
+                        l.From = corners[i][1]
+                        l.To = corners[i][2]
+                    end
                 end
+            elseif d.Box then
+                for _,l in ipairs(d.Box) do if l then l.Visible = false end end
             end
-        elseif d.Box then
-            for _,l in ipairs(d.Box) do if l then l.Visible = false end end
-        end
 
-        if d.Line and Toggles.ESPLine then
-            d.Line.Visible = true
-            d.Line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-            d.Line.To = Vector2.new(hp.X, hp.Y)
-        elseif d.Line then
-            d.Line.Visible = false
-        end
-
-        if d.Studs and Toggles.ESPStuds then
-            d.Studs.Visible = true
-            d.Studs.Text = dist .. "m"
-            d.Studs.Position = Vector2.new(hp.X, hp.Y + 12)
-        elseif d.Studs then
-            d.Studs.Visible = false
-        end
-
-        if d.Name and (Toggles.ESPName or Toggles.ESPInv) then
-            d.Name.Visible = true
-            d.Name.Position = Vector2.new(hd.X, hd.Y - 16)
-            local txt = plr.Name .. " [" .. math.floor(ch.Humanoid and ch.Humanoid.Health or 0) .. " HP]"
-            if Toggles.ESPInv and PlayerInvs[plr] then
-                txt = txt .. "\nInv: " .. PlayerInvs[plr]
+            if d.Line and Toggles.ESPLine then
+                d.Line.Visible = true
+                d.Line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+                d.Line.To = Vector2.new(hp.X, hp.Y)
+            elseif d.Line then
+                d.Line.Visible = false
             end
-            d.Name.Text = txt
-            d.Name.Center = true
-            d.Name.Outline = true
-            d.Name.Size = 13
-        elseif d.Name then
-            d.Name.Visible = false
-        end
 
-        if d.Skeleton and Toggles.ESPSkeleton then
-            for _, b in ipairs(d.Skeleton) do
-                pcall(function()
-                    local pA = ch:FindFirstChild(b.from)
-                    local pB = ch:FindFirstChild(b.to)
-                    if pA and pB then
-                        local A, oA = Camera:WorldToViewportPoint(pA.Position)
-                        local B, oB = Camera:WorldToViewportPoint(pB.Position)
-                        if oA and oB then
-                            b.line.Visible = true
-                            b.line.From = Vector2.new(A.X, A.Y)
-                            b.line.To = Vector2.new(B.X, B.Y)
-                            b.line.Color = col
+            if d.Studs and Toggles.ESPStuds then
+                d.Studs.Visible = true
+                d.Studs.Text = dist .. "m"
+                d.Studs.Position = Vector2.new(hp.X, hp.Y + 12)
+            elseif d.Studs then
+                d.Studs.Visible = false
+            end
+
+            if d.Name and (Toggles.ESPName or Toggles.ESPInv) then
+                d.Name.Visible = true
+                d.Name.Position = Vector2.new(hd.X, hd.Y - 16)
+                local txt = plr.Name .. " [" .. math.floor(ch.Humanoid and ch.Humanoid.Health or 0) .. " HP]"
+                if Toggles.ESPInv and PlayerInvs[plr] then
+                    txt = txt .. "\nInv: " .. PlayerInvs[plr]
+                end
+                d.Name.Text = txt
+                d.Name.Center = true
+                d.Name.Outline = true
+                d.Name.Size = 13
+            elseif d.Name then
+                d.Name.Visible = false
+            end
+
+            if d.Skeleton and Toggles.ESPSkeleton then
+                for _, b in ipairs(d.Skeleton) do
+                    pcall(function()
+                        local pA = ch:FindFirstChild(b.from)
+                        local pB = ch:FindFirstChild(b.to)
+                        if pA and pB then
+                            local A, oA = Camera:WorldToViewportPoint(pA.Position)
+                            local B, oB = Camera:WorldToViewportPoint(pB.Position)
+                            if oA and oB then
+                                b.line.Visible = true
+                                b.line.From = Vector2.new(A.X, A.Y)
+                                b.line.To = Vector2.new(B.X, B.Y)
+                                b.line.Color = col
+                            else
+                                b.line.Visible = false
+                            end
                         else
                             b.line.Visible = false
                         end
-                    else
-                        b.line.Visible = false
-                    end
-                end)
+                    end)
+                end
+            elseif d.Skeleton then
+                for _, b in ipairs(d.Skeleton) do if b.line then b.line.Visible = false end end
             end
-        elseif d.Skeleton then
-            for _, b in ipairs(d.Skeleton) do if b.line then b.line.Visible = false end end
-        end
 
-        if d.Tracer and Toggles.ESPTracer then
-            d.Tracer.Visible = true
-            local footPos = hrp.Position + Vector3.new(0, -3, 0)
-            local footScreen, footOn = Camera:WorldToViewportPoint(footPos)
-            if footOn then
-                d.Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-                d.Tracer.To = Vector2.new(footScreen.X, footScreen.Y)
-            else
+            if d.Tracer and Toggles.ESPTracer then
+                d.Tracer.Visible = true
+                local footPos = hrp.Position + Vector3.new(0, -3, 0)
+                local footScreen, footOn = Camera:WorldToViewportPoint(footPos)
+                if footOn then
+                    d.Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+                    d.Tracer.To = Vector2.new(footScreen.X, footScreen.Y)
+                else
+                    d.Tracer.Visible = false
+                end
+            elseif d.Tracer then
                 d.Tracer.Visible = false
             end
-        elseif d.Tracer then
-            d.Tracer.Visible = false
         end
     end
 
-    -- Veículos
+    -- Veículos (independente de Drawing)
     local ch = LP.Character
     if ch and ch:FindFirstChild("Humanoid") and ch.Humanoid.SeatPart then
         local seatPart = ch.Humanoid.SeatPart
@@ -2368,25 +2380,27 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Eventos de ESP
-Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function()
-        task.wait(0.5)
-        if Toggles.ESP then
-            RemoveESP(p)
-            CreateESP(p)
-        end
+-- Eventos de ESP (apenas se Drawing suportado)
+if hasDrawing then
+    Players.PlayerAdded:Connect(function(p)
+        p.CharacterAdded:Connect(function()
+            task.wait(0.5)
+            if Toggles.ESP then
+                RemoveESP(p)
+                CreateESP(p)
+            end
+        end)
     end)
-end)
-Players.PlayerRemoving:Connect(RemoveESP)
-LP.CharacterAdded:Connect(function()
-    task.wait(1)
-    UpdateAllESP()
-end)
+    Players.PlayerRemoving:Connect(RemoveESP)
+    LP.CharacterAdded:Connect(function()
+        task.wait(1)
+        UpdateAllESP()
+    end)
+end
 
 -- Inicialização
 task.spawn(CreateFOVCircle)
 ToggleAntiSit(true, true)
-task.delay(0.4, function() hub:Notify("CLS HUB + EXTRA", "Carregado com sucesso (Auto Farm Gari com desvio de obstáculos)", 4) end)
+task.delay(0.4, function() hub:Notify("ONYX HUB", "Carregado com sucesso! Compatível com Xeno/Delta.", 4) end)
 
 return hub
