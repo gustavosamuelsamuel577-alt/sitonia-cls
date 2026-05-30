@@ -5,7 +5,6 @@
     - Adicionado: Head Size (própria cabeça) com slider e transparência
     - Sistema de salvar/carregar config (inclui head size e todas toggles)
     - CORREÇÃO: Aba Misc agora exibe todas as funções corretamente
-    - REMOVIDO: ESP Highlight (totalmente removido do código)
 --]]
 
 local Players          = game:GetService("Players")
@@ -111,7 +110,7 @@ local function padding(p, v)
         PaddingLeft = UDim.new(0, v), PaddingRight = UDim.new(0, v), Parent = p,
     })
 end
-local function tween(o, p, i) TweenService:Create(o, p, i or TWEEN):Play() end
+local function tween(o, p, i) TweenService:Create(o, i or TWEEN, p):Play() end
 
 ---------------------------------------------------------------- ONYX HUB (UI)
 local Onyx = {}
@@ -1119,8 +1118,9 @@ RunService.RenderStepped:Connect(function()
     else lockedTarget = nil end
 end)
 
--- ESP (Billboard, Drawing, Tracers) - HIGHLIGHT REMOVIDO
+-- ESP (Billboard, Highlight, Drawing)
 local billboardEnabled = false
+local highlightEnabled = true
 local espEnabled = false
 local tracersEnabled = false
 local distanceEnabled = false
@@ -1137,6 +1137,34 @@ local function ensureStorage(name)
         g.Parent = LP.PlayerGui
     end
     return g
+end
+
+local function createHighlightForCharacter(char, plr)
+    if not char then return end
+    pcall(function()
+        local storage = ensureStorage("Stopped_Highlight_Storage")
+        local nodeName = (plr and plr.Name) or char.Name or tostring(char:GetDebugId())
+        if storage:FindFirstChild(nodeName) then storage[nodeName]:Destroy() end
+        local h = Instance.new("Highlight")
+        h.Name = nodeName
+        h.FillColor = THEME.Accent
+        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        h.FillTransparency = 0.25
+        h.OutlineColor = Color3.fromRGB(255,255,255)
+        h.Parent = storage
+        if char then h.Adornee = char end
+    end)
+end
+
+local function destroyHighlightForCharacter(char)
+    if not char then return end
+    local storage = LP.PlayerGui:FindFirstChild("Stopped_Highlight_Storage")
+    if not storage then return end
+    for _, h in ipairs(storage:GetChildren()) do
+        if h:IsA("Highlight") and h.Adornee == char then
+            pcall(function() h:Destroy() end)
+        end
+    end
 end
 
 local function createBillboardForCharacter(char, plr)
@@ -1201,6 +1229,10 @@ end
 
 local function destroyAllBillboards()
     local storage = LP.PlayerGui:FindFirstChild("Stopped_Billboard_Storage")
+    if storage then pcall(function() storage:Destroy() end) end
+end
+local function destroyAllHighlights()
+    local storage = LP.PlayerGui:FindFirstChild("Stopped_Highlight_Storage")
     if storage then pcall(function() storage:Destroy() end) end
 end
 
@@ -1405,6 +1437,7 @@ RunService.RenderStepped:Connect(function()
                 else
                     if data.nameText then data.nameText.Visible = false end
                     if data.healthText then data.healthText.Visible = false end
+                    if data.healthBar then data.healthBar.Visible = false end
                     if data.tracer then data.tracer.Visible = false end
                     if data.distanceText then data.distanceText.Visible = false end
                 end
@@ -1416,11 +1449,13 @@ end)
 Players.PlayerAdded:Connect(function(plr)
     resetShotDataForPlayer(plr)
     plr.CharacterAdded:Connect(function(char)
+        if highlightEnabled then createHighlightForCharacter(char, plr) end
         if billboardEnabled then createBillboardForCharacter(char, plr) end
         if drawingSupported then createESPObjectsForPlayer(plr) end
     end)
     if plr.Character then
         local char = plr.Character
+        if highlightEnabled then createHighlightForCharacter(char, plr) end
         if billboardEnabled then createBillboardForCharacter(char, plr) end
         if drawingSupported then createESPObjectsForPlayer(plr) end
     end
@@ -1428,6 +1463,7 @@ end)
 Players.PlayerRemoving:Connect(function(plr)
     local char = plr.Character
     if char then
+        destroyHighlightForCharacter(char)
         destroyBillboardForCharacter(char, plr)
     end
     shotCounts[plr] = nil; prevHealth[plr] = nil; friendSet[plr.UserId] = nil
@@ -1437,11 +1473,13 @@ end)
 for _, plr in ipairs(Players:GetPlayers()) do
     resetShotDataForPlayer(plr)
     plr.CharacterAdded:Connect(function(char)
+        if highlightEnabled then createHighlightForCharacter(char, plr) end
         if billboardEnabled then createBillboardForCharacter(char, plr) end
         if drawingSupported then createESPObjectsForPlayer(plr) end
     end)
     if plr.Character then
         local char = plr.Character
+        if highlightEnabled then createHighlightForCharacter(char, plr) end
         if billboardEnabled then createBillboardForCharacter(char, plr) end
     end
 end
@@ -1833,9 +1871,18 @@ do
     end
 end
 
--- Aba Visual (sem Highlight)
+-- Aba Visual
 local visTab = hub:AddTab("Visual", nil)
 do
+    local c = visTab:AddCard("Highlight")
+    c:AddToggle("Player Highlight", true, function(s)
+        highlightEnabled = s
+        if s then
+            for _, plr in ipairs(Players:GetPlayers()) do if plr ~= LP and plr.Character then createHighlightForCharacter(plr.Character, plr) end end
+        else
+            destroyAllHighlights()
+        end
+    end)
     local bill = visTab:AddCard("Billboard ESP")
     bill:AddToggle("Ativar", false, function(s)
         billboardEnabled = s
@@ -2062,6 +2109,7 @@ do
             rapidFireDelay = rapidFireDelay,
             holdToAimEnabled = holdToAimEnabled,
             aimKey = aimKey.Name,
+            highlightEnabled = highlightEnabled,
             billboardEnabled = billboardEnabled,
             espEnabled = espEnabled,
             tracersEnabled = tracersEnabled,
@@ -2108,6 +2156,7 @@ do
         rapidFireDelay = data.rapidFireDelay or 0.06
         holdToAimEnabled = data.holdToAimEnabled or false
         if data.aimKey then aimKey = Enum.KeyCode[data.aimKey] or Enum.KeyCode.E end
+        highlightEnabled = data.highlightEnabled == nil and true or data.highlightEnabled
         billboardEnabled = data.billboardEnabled or false
         espEnabled = data.espEnabled or false
         tracersEnabled = data.tracersEnabled or false
@@ -2153,6 +2202,9 @@ do
         end
         rebuildFriendEntries()
         updateFOVVisual()
+        if highlightEnabled then
+            for _, plr in ipairs(Players:GetPlayers()) do if plr ~= LP and plr.Character then createHighlightForCharacter(plr.Character, plr) end end
+        end
         if billboardEnabled then
             for _, plr in ipairs(Players:GetPlayers()) do if plr ~= LP and plr.Character then createBillboardForCharacter(plr.Character, plr) end end
         end
